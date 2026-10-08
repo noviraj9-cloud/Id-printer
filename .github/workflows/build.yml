@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build APK
 
 on:
   push:
@@ -9,19 +9,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up Java
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
           distribution: 'temurin'
+          java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Create Complete Android Project Files
+      - name: Create Android Project
         run: |
           mkdir -p app/src/main/java/com/example/idprint
           mkdir -p app/src/main/res/layout
@@ -231,11 +228,11 @@ jobs:
           }
           EOF
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-
       - name: Build Debug APK
-        run: gradle assembleDebug --stacktrace
+        run: |
+          gradle wrapper --gradle-version 8.2
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
