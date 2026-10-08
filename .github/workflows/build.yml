@@ -1,0 +1,210 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Generate Android Project
+        run: |
+          mkdir -p app/src/main/java/com/example/idprint
+          mkdir -p app/src/main/res/layout
+
+          cat << 'EOF' > settings.gradle
+          rootProject.name = "IdPrinter"
+          include ':app'
+          EOF
+
+          cat << 'EOF' > build.gradle
+          buildscript {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:8.1.4'
+                  classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0'
+              }
+          }
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          EOF
+
+          cat << 'EOF' > app/build.gradle
+          plugins {
+              id 'com.android.application'
+              id 'org.jetbrains.kotlin.android'
+          }
+          android {
+              namespace 'com.example.idprint'
+              compileSdk 34
+              defaultConfig {
+                  applicationId "com.example.idprint"
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                  }
+              }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = '17'
+              }
+          }
+          dependencies {
+              implementation 'androidx.core:core-ktx:1.12.0'
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+              implementation 'com.google.android.material:material:1.11.0'
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
+              <application
+                  android:allowBackup="true"
+                  android:label="ID Print App"
+                  android:theme="@style/Theme.AppCompat.Light.DarkActionBar">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat << 'EOF' > app/src/main/res/layout/activity_main.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:orientation="vertical"
+              android:padding="20dp"
+              android:gravity="center_horizontal">
+              <TextView
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:text="ID Card Print Assistant"
+                  android:textSize="20sp"
+                  android:textStyle="bold"
+                  android:layout_marginBottom="16dp" />
+              <ImageView
+                  android:id="@+id/ivFront"
+                  android:layout_width="260dp"
+                  android:layout_height="140dp"
+                  android:background="#E0E0E0"
+                  android:scaleType="centerInside" />
+              <Button
+                  android:id="@+id/btnPickFront"
+                  android:layout_width="260dp"
+                  android:layout_height="wrap_content"
+                  android:text="Pick Front ID"
+                  android:layout_marginBottom="12dp" />
+              <ImageView
+                  android:id="@+id/ivBack"
+                  android:layout_width="260dp"
+                  android:layout_height="140dp"
+                  android:background="#E0E0E0"
+                  android:scaleType="centerInside" />
+              <Button
+                  android:id="@+id/btnPickBack"
+                  android:layout_width="260dp"
+                  android:layout_height="wrap_content"
+                  android:text="Pick Back ID"
+                  android:layout_marginBottom="20dp" />
+              <Button
+                  android:id="@+id/btnPrint"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:text="Print Both On A4" />
+          </LinearLayout>
+          EOF
+
+          cat << 'EOF' > app/src/main/java/com/example/idprint/MainActivity.kt
+          package com.example.idprint
+          import android.content.Context
+          import android.graphics.*
+          import android.net.Uri
+          import android.os.*
+          import android.print.*
+          import android.print.pdf.PrintedPdfDocument
+          import android.provider.MediaStore
+          import android.widget.*
+          import androidx.activity.result.contract.ActivityResultContracts
+          import androidx.appcompat.app.AppCompatActivity
+          import java.io.FileOutputStream
+
+          class MainActivity : AppCompatActivity() {
+              private var frontBitmap: Bitmap? = null
+              private var backBitmap: Bitmap? = null
+              private lateinit var ivFront: ImageView
+              private lateinit var ivBack: ImageView
+
+              private val pickFrontLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+                  uri?.let {
+                      frontBitmap = MediaStore.Images.Media.getBitmap(contentResolver, it)
+                      ivFront.setImageBitmap(frontBitmap)
+                  }
+              }
+
+              private val pickBackLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+                  uri?.let {
+                      backBitmap = MediaStore.Images.Media.getBitmap(contentResolver, it)
+                      ivBack.setImageBitmap(backBitmap)
+                  }
+              }
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  setContentView(R.layout.activity_main)
+                  ivFront = findViewById(R.id.ivFront)
+                  ivBack = findViewById(R.id.ivBack)
+                  findViewById<Button>(R.id.btnPickFront).setOnClickListener { pickFrontLauncher.launch("image/*") }
+                  findViewById<Button>(R.id.btnPickBack).setOnClickListener { pickBackLauncher.launch("image/*") }
+                  findViewById<Button>(R.id.btnPrint).setOnClickListener {
+                      if (frontBitmap != null && backBitmap != null) {
+                          val printManager = getSystemService(Context.PRINT_SERVICE) as PrintManager
+                          printManager.print("ID_Card_Print", object : PrintDocumentAdapter() {
+                              private var pdfDoc: PrintedPdfDocument? = null
+                              override fun onLayout(oldAttr: PrintAttributes?, newAttr: PrintAttributes, signal: CancellationSignal?, callback: LayoutResultCallback, extras: Bundle?) {
+                                  pdfDoc = PrintedPdfDocument(this@MainActivity, newAttr)
+                                  if (signal?.isCanceled == true) { callback.onLayoutCancelled(); return }
+                                  callback.onLayoutFinished(PrintDocumentInfo.Builder("id_card.pdf").setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT).setPageCount(1).build(), true)
+                              }
+                              override fun onWrite(pages: Array<out PageRange>?, dest: ParcelFileDescriptor, signal: CancellationSignal?, callback: WriteResultCallback) {
+                                  val page = pdfDoc?.startPage(0) ?: return
+                                  val canvas = page.canvas
+                                  val cardW = 240
+                                  val cardH = 150
+                                  val left = (canvas.width - cardW) / 2
+                                  val paint = Paint()
+                                  frontBitmap?.let { canvas.drawBitmap(it, Rect(0
